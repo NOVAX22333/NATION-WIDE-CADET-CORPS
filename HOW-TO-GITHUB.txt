@@ -1,0 +1,16 @@
+GITHUB – what to upload
+=======================
+Upload ALL files in this folder EXCEPT this HOW-TO file:
+  index.html   (the whole app)
+  robots.txt   (tells Google what to skip)
+  sitemap.xml  (tells Google your page address)
+  README.md
+  .gitignore   (keeps secret keys out of GitHub; if your phone hides it, skip it and add later from a computer)
+
+Steps
+1. github.com > "+" > New repository. Name: ghana-ncc. Choose Private. Create.
+2. Tap "uploading an existing file".
+3. Select the files above. Tap Commit changes.
+
+Do NOT upload any keys or passwords to GitHub.
+After the upload, go to folder 3-VERCEL.

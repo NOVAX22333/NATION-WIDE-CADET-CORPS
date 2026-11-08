@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /cadet/
+Disallow: /admin/
+Disallow: /platform/
+Sitemap: https://YOUR-DOMAIN/sitemap.xml
