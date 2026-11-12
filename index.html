@@ -264,8 +264,8 @@ async function render(){let h=location.hash.slice(1)||"welcome";if(!V[h])h="welc
  catch(x){toast("Could not load data. Check your connection and try again.")}
  $("#app").innerHTML=V[h]();if(h==="search"&&!S.picked)drawRes();window.scrollTo(0,0)}
 window.addEventListener("hashchange",render);
-async function boot(){try{const c=await (await fetch("/api/config")).json();if(!c.url||!c.anon)throw new Error("config");sb=supabase.createClient(c.url,c.anon)}
- catch(x){$("#app").innerHTML='<main class="hero"><section class="card"><h2>Setup needed</h2><p class="mut">The app could not read its Supabase settings. Add SUPABASE_URL and SUPABASE_ANON_KEY in the Vercel project environment variables, then redeploy.</p></section></main>';return}
+async function boot(){try{const r=await fetch("/api/config");if(!r.ok)throw new Error("The /api/config function was not found (HTTP "+r.status+"). Upload the api folder to the root of your project and redeploy.");const c=await r.json();if(!c.url||!c.anon)throw new Error("SUPABASE_URL or SUPABASE_ANON_KEY is empty in Vercel. Add both under Settings, Environment Variables, then redeploy.");sb=supabase.createClient(c.url,c.anon)}
+ catch(x){$("#app").innerHTML='<main class="hero"><section class="card"><h2>Setup needed</h2><p class="mut" id="setupmsg"></p></section></main>';$("#setupmsg").textContent=x.message;return}
  const {data}=await sb.auth.getSession();await setProf(data.session);render()}
 boot();
 </script>
