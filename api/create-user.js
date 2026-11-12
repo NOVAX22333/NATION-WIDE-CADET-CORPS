@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
       const sc = await db.from('schools').insert({ name: text(s.name), abbreviation: text(s.abbr) || null, region: text(s.region), town: text(s.town) || null, category: text(s.category), motto: text(s.motto) || null }).select('id').single();
       if (sc.error) { await db.auth.admin.deleteUser(au.data.user.id); return fail(res, 400, sc.error.message); }
       const r1 = await db.from('school_private').insert({ school_id: sc.data.id, email: text(s.email) || null, tel: text(s.tel) || null, payment_status: text(s.pay) || 'Pending' });
-      const r2 = await db.from('profiles').insert({ id: au.data.user.id, role: 'school_admin', school_id: sc.data.id });
+      const r2 = await db.from('profiles').upsert({ id: au.data.user.id, role: 'school_admin', school_id: sc.data.id, cadet_id: null }, { onConflict: 'id' });
       if (r1.error || r2.error) { await db.from('schools').delete().eq('id', sc.data.id); await db.auth.admin.deleteUser(au.data.user.id); return fail(res, 400, (r1.error || r2.error).message); }
       return res.status(200).json({ ok: true, school_id: sc.data.id });
     }
@@ -43,7 +43,7 @@ module.exports = async (req, res) => {
       if (au.error) return fail(res, 400, /registered|exists/i.test(au.error.message) ? 'This cadet ID is already registered.' : au.error.message);
       const cd = await db.from('cadets').insert({ school_id: me.school_id, cadet_no: no, full_name: text(c.name), gender: text(c.gender), dob: text(c.dob) || null, form: text(c.form), rank: text(c.rank), phone: text(c.phone) || null, photo_url: c.photo || null, status: 'Active' }).select('id').single();
       if (cd.error) { await db.auth.admin.deleteUser(au.data.user.id); return fail(res, 400, cd.error.message); }
-      const pr = await db.from('profiles').insert({ id: au.data.user.id, role: 'cadet', school_id: me.school_id, cadet_id: cd.data.id });
+      const pr = await db.from('profiles').upsert({ id: au.data.user.id, role: 'cadet', school_id: me.school_id, cadet_id: cd.data.id }, { onConflict: 'id' });
       if (pr.error) { await db.from('cadets').delete().eq('id', cd.data.id); await db.auth.admin.deleteUser(au.data.user.id); return fail(res, 400, pr.error.message); }
       return res.status(200).json({ ok: true });
     }
