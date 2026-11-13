@@ -1,6 +1,5 @@
 User-agent: *
 Allow: /
-Disallow: /cadet/
-Disallow: /admin/
-Disallow: /platform/
-Sitemap: https://YOUR-DOMAIN/sitemap.xml
+Disallow: /api/
+
+Sitemap: https://nationwide-cadet-corps.vercel.app/sitemap.xml
