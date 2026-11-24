@@ -12,6 +12,9 @@ create table if not exists public.chat_threads (
   user_a uuid references auth.users on delete cascade,
   user_b uuid references auth.users on delete cascade,
   created_at timestamptz not null default now());
+alter table public.chat_threads drop constraint if exists chat_threads_kind_check;
+alter table public.chat_threads add constraint chat_threads_kind_check check (kind in ('school','private','global'));
+create unique index if not exists chat_global_uq on public.chat_threads (kind) where kind = 'global';
 create unique index if not exists chat_school_pair_uq on public.chat_threads (school_a, school_b) where kind = 'school';
 create unique index if not exists chat_private_pair_uq on public.chat_threads (user_a, user_b) where kind = 'private';
 
@@ -46,6 +49,7 @@ language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from chat_threads th where th.id = t and (
       public.my_role() = 'platform_admin'
+      or (th.kind = 'global' and coalesce(public.my_role(), '') in ('school_admin', 'cadet'))
       or (th.kind = 'school' and public.my_school() in (th.school_a, th.school_b))
       or (th.kind = 'private' and (
             auth.uid() in (th.user_a, th.user_b)
@@ -83,12 +87,14 @@ create or replace function public.chat_my_threads()
 returns table (thread_id uuid, kind text, title text, subtitle text, last_body text, last_at timestamptz, oversight boolean)
 language sql stable security definer set search_path = public as $$
   select th.id, th.kind,
-    case when th.kind = 'school' then
+    case when th.kind = 'global' then 'All schools'
+         when th.kind = 'school' then
            (select s.name from schools s where s.id = case when th.school_a = public.my_school() then th.school_b else th.school_a end)
          when auth.uid() = th.user_a then public.chat_person(th.user_b)
          when auth.uid() = th.user_b then public.chat_person(th.user_a)
          else public.chat_person(th.user_a) || ' and ' || public.chat_person(th.user_b) end,
-    case when th.kind = 'school' then 'School channel'
+    case when th.kind = 'global' then 'Everyone on the platform'
+         when th.kind = 'school' then 'School channel'
          when auth.uid() in (th.user_a, th.user_b) then 'Private chat'
          else 'Monitoring' end,
     lm.body, coalesce(lm.created_at, th.created_at),
@@ -99,6 +105,16 @@ language sql stable security definer set search_path = public as $$
   where coalesce(public.my_role(), '') in ('school_admin', 'cadet') and public.chat_can_read(th.id)
   order by 6 desc
 $$;
+
+create or replace function public.chat_open_global() returns uuid
+language plpgsql security definer set search_path = public as $$
+declare tid uuid;
+begin
+  if coalesce(public.my_role(), '') not in ('school_admin', 'cadet') or public.my_school() is null then raise exception 'You cannot use chat.'; end if;
+  select id into tid from chat_threads where kind = 'global';
+  if tid is null then insert into chat_threads (kind) values ('global') returning id into tid; end if;
+  return tid;
+end $$;
 
 create or replace function public.chat_open_school(p_other uuid) returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -144,7 +160,7 @@ begin
   if not found then raise exception 'Conversation not found.'; end if;
   if th.kind = 'school' then
     if mys not in (th.school_a, th.school_b) then raise exception 'You are not part of this conversation.'; end if;
-  else
+  elsif th.kind = 'private' then
     if me not in (th.user_a, th.user_b) then raise exception 'You are not part of this conversation.'; end if;
     if th.school_a <> th.school_b and exists (select 1 from schools where id in (th.school_a, th.school_b) and not chat_private) then
       raise exception 'Private chat is turned off for one of the schools.';
@@ -160,11 +176,15 @@ end $$;
 
 create or replace function public.chat_hide(p_message bigint) returns void
 language plpgsql security definer set search_path = public as $$
-declare t uuid;
+declare t uuid; s uuid; k text;
 begin
   if coalesce(public.my_role(), '') not in ('school_admin', 'platform_admin') then raise exception 'Only administrators can remove messages.'; end if;
-  select thread_id into t from chat_messages where id = p_message;
+  select m.thread_id, m.sender_school, th.kind into t, s, k
+  from chat_messages m join chat_threads th on th.id = m.thread_id where m.id = p_message;
   if t is null or not public.chat_can_read(t) then raise exception 'Message not found.'; end if;
+  if k = 'global' and public.my_role() = 'school_admin' and s is distinct from public.my_school() then
+    raise exception 'You can only remove messages sent by people from your own school.';
+  end if;
   update chat_messages set hidden = true where id = p_message;
 end $$;
 
@@ -204,7 +224,7 @@ grant all on public.chat_threads, public.chat_messages, public.chat_reports to s
 do $$
 declare f text;
 begin
-  foreach f in array array['chat_can_read(uuid)', 'chat_dir(uuid)', 'chat_my_threads()', 'chat_open_school(uuid)', 'chat_open_private(uuid)',
+  foreach f in array array['chat_can_read(uuid)', 'chat_dir(uuid)', 'chat_my_threads()', 'chat_open_global()', 'chat_open_school(uuid)', 'chat_open_private(uuid)',
                            'chat_send(uuid,text)', 'chat_hide(bigint)', 'chat_report(bigint,text)', 'chat_reports_list()'] loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
